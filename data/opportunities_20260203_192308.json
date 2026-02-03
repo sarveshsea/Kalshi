@@ -1,0 +1,25 @@
+{
+  "timestamp": "20260203_192308",
+  "target_return": 5.0,
+  "high_return_bets": [
+    {
+      "ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S202628AA3753AC3-CF404679E32",
+      "title": "yes Derrick White: 1+,yes Jaylen Brown: 1+,yes Jalen Brunson: 1+,yes Jalen Johnson: 4+,yes Jaylen Brown: 2+,yes Nikola Joki\u0107: 6+,yes Luka Don\u010di\u0107: 6+,yes Jalen Brunson: 4+,yes Boston,yes New York,yes Oklahoma City,yes Jalen Johnson: 8+,yes Derrick White: 2+,yes Nikola Vu\u010devi\u0107: 6+,yes Nikola Joki\u0107: 6+,yes Luka Don\u010di\u0107: 4+,yes LeBron James: 2+,yes OG Anunoby: 2+,yes Miami (OH),yes Texas,yes TB Lightning,yes CAR Hurricanes,yes ANA Ducks",
+      "price": 0.02,
+      "potential_return": 49.0,
+      "payout_multiplier": 50.0,
+      "category": null,
+      "volume": 0
+    },
+    {
+      "ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S20268C6B88AD71C-AC9D33A4A5E",
+      "title": "yes Brooklyn,yes New York,yes Portland",
+      "price": 0.1,
+      "potential_return": 9.0,
+      "payout_multiplier": 10.0,
+      "category": null,
+      "volume": 0
+    }
+  ],
+  "arbitrage": []
+}
