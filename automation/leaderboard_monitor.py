@@ -1,96 +1,63 @@
 #!/usr/bin/env python3
 """
-🤖 LEVEL 5 AUTOMATION: Leaderboard Monitor
-Unlocked at Level 5 - Smart money copy bot
+Legacy entrypoint retained for compatibility.
 
-Monitors Kalshi leaderboard every 30 minutes and auto-executes on consensus
+Named-trader leaderboard copy logic has been removed. This monitor now runs
+public market-flow detection and updates alpha_signals.json.
 """
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from __future__ import annotations
 
-from core.leaderboard_tracker import KalshiLeaderboardTracker
-import time
+from argparse import ArgumentParser, Namespace
 from datetime import datetime
+import time
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from ops.build_flow_alpha import build_signals, write_outputs
 
 
-def monitor_leaderboard(interval_minutes=30):
-    """
-    Monitor leaderboard and execute on consensus
-    
-    1. Fetch top 10 traders
-    2. Check their current positions
-    3. Detect 3+ trader consensus
-    4. Auto-execute within 1 hour
-    5. Track performance
-    """
-    print("🤖 LEADERBOARD MONITOR - Level 5 Automation")
-    print("="*70)
-    print(f"Monitoring every {interval_minutes} minutes")
-    print("Auto-execute on 3+ trader consensus\n")
-    
-    tracker = KalshiLeaderboardTracker()
+def monitor_flow(interval_minutes: int = 30, top_k: int = 20) -> None:
     cycle = 0
-    
     while True:
         cycle += 1
-        timestamp = datetime.utcnow().strftime("%H:%M UTC")
-        print(f"[{timestamp}] Cycle #{cycle}")
-        
-        # Get consensus picks
-        consensus = tracker.get_consensus_picks(min_traders=3)
-        
-        if consensus:
-            print(f"\n🚨 {len(consensus)} CONSENSUS PICKS DETECTED:")
-            
-            for pick in consensus:
-                print(f"\n  📊 {pick['ticker']}")
-                print(f"     Side: {pick['side'].upper()}")
-                print(f"     Traders: {pick['trader_count']} ({', '.join(pick['traders'])})")
-                print(f"     Avg entry: {pick['avg_entry_price']*100:.1f}¢")
-                
-                # Calculate position size
-                bankroll = 1000  # Would load from status
-                position_size = bankroll * 0.10
-                contracts = int(position_size / pick['avg_entry_price'])
-                
-                print(f"\n     💰 AUTO-EXECUTE:")
-                print(f"        Buy {contracts} contracts at ≤{pick['avg_entry_price']*100:.0f}¢")
-                print(f"        Risk: ${position_size:.0f}")
-                print(f"        Max profit: ${contracts * (1 - pick['avg_entry_price']):.0f}")
-                
-                # Would execute here
-                # client.place_order(...)
-                
-                print(f"     ✅ Order placed (simulated)")
+        now = datetime.utcnow().strftime("%H:%M UTC")
+        print(f"[{now}] Flow monitor cycle #{cycle}")
+        args = Namespace(
+            env="prod",
+            markets_limit=200,
+            trade_limit=120,
+            book_depth=5,
+            top_k=top_k,
+            min_market_volume=2500.0,
+            min_trades=15,
+            max_spread=0.08,
+            min_confidence=0.6,
+            source_tag="smart_money_flow_v1",
+            alpha_out="data/alpha_signals.json",
+            csv_out="data/flow_signals_latest.csv",
+        )
+        signals = build_signals(args)
+        if signals:
+            write_outputs(
+                signals,
+                alpha_out=Path(args.alpha_out),
+                csv_out=Path(args.csv_out),
+                source_tag=args.source_tag,
+            )
+            print(f"Generated {len(signals)} market-flow signals")
         else:
-            print(f"  ✓ No consensus found")
-        
-        print(f"\n⏰ Next check in {interval_minutes} minutes")
-        print("-"*70)
-        
+            print("No eligible flow signals")
         time.sleep(interval_minutes * 60)
 
 
 if __name__ == "__main__":
-    print("🤖 Level 5 Automation: LEADERBOARD MONITOR")
-    print("Requires: Level 5 unlocked")
-    print("Schedule: Continuous (every 30 min)\n")
-    
-    # Check level
-    import json
-    with open("../../level_status.json", 'r') as f:
-        status = json.load(f)
-    
-    if status['current_level'] < 5:
-        print(f"❌ LOCKED - Current level: {status['current_level']}")
-        print(f"   Unlock at Level 5")
-        print(f"   Progress: {status['evolution_progress']}")
-        exit(1)
-    
-    print("✅ Level 5 unlocked - Starting monitor...\n")
-    
+    parser = ArgumentParser(description="Public market-flow monitor")
+    parser.add_argument("--interval-minutes", type=int, default=30)
+    parser.add_argument("--top-k", type=int, default=20)
+    args = parser.parse_args()
     try:
-        monitor_leaderboard(interval_minutes=30)
+        monitor_flow(interval_minutes=args.interval_minutes, top_k=args.top_k)
     except KeyboardInterrupt:
-        print("\n\n👋 Monitor stopped")
+        print("\nStopped.")

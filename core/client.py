@@ -3,7 +3,7 @@ Kalshi API Client
 Handles authentication, market data fetching, and order execution
 """
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
 import json
 
@@ -23,6 +23,11 @@ class KalshiClient:
         self.api_key_id = api_key_id or os.getenv("KALSHI_API_KEY_ID")
         self.private_key_path = private_key_path or os.getenv("KALSHI_PRIVATE_KEY_PATH")
         self.env = env or os.getenv("KALSHI_ENV", "demo")
+        self.base_url = (
+            "https://demo-api.kalshi.co/trade-api/v2"
+            if self.env == "demo"
+            else "https://api.elections.kalshi.com/trade-api/v2"
+        )
         
         if not self.api_key_id or not self.private_key_path:
             print("⚠️  No credentials found. Set KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_PATH")
@@ -42,8 +47,7 @@ class KalshiClient:
                 private_key = f.read()
             
             # Configure client (updated API endpoint as of 2026)
-            host = "https://demo-api.kalshi.co/trade-api/v2" if self.env == "demo" else "https://api.elections.kalshi.com/trade-api/v2"
-            config = Configuration(host=host)
+            config = Configuration(host=self.base_url)
             config.api_key_id = self.api_key_id
             config.private_key_pem = private_key
             
@@ -136,6 +140,18 @@ class KalshiClient:
         # ALWAYS use public API to avoid Pydantic validation errors
         # The authenticated SDK has validation issues with None values
         return self._get_public_markets_v2(status, limit, event_ticker)
+
+    def _public_get(self, path: str, params: Optional[Dict[str, Any]] = None, timeout: int = 10) -> Optional[Dict[str, Any]]:
+        import requests
+
+        url = f"{self.base_url}{path}"
+        try:
+            resp = requests.get(url, params=params or {}, timeout=timeout)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            print(f"Error fetching {path}: {e}")
+            return None
         
     def _get_public_markets_v2(self, status: str = "open", limit: int = 100, event_ticker: str = None) -> List[Dict]:
         """
@@ -143,7 +159,7 @@ class KalshiClient:
         """
         import requests
         try:
-            url = "https://api.elections.kalshi.com/trade-api/v2/markets"
+            url = f"{self.base_url}/markets"
             params = {"status": status, "limit": limit}
             if event_ticker:
                 params["event_ticker"] = event_ticker
@@ -242,7 +258,7 @@ class KalshiClient:
     def get_orderbook(self, ticker: str) -> Optional[Dict]:
         """Get order book depth for a market"""
         if not self.authenticated:
-            return None
+            return self.get_public_orderbook(ticker)
         
         try:
             book_resp = self.client.get_orderbook(ticker=ticker)
@@ -252,7 +268,88 @@ class KalshiClient:
             }
         except Exception as e:
             print(f"Error fetching orderbook for {ticker}: {e}")
-            return None
+            return self.get_public_orderbook(ticker)
+
+    def get_public_orderbook(self, ticker: str) -> Optional[Dict[str, List[Dict[str, float]]]]:
+        """
+        Get market orderbook from public endpoint.
+        """
+        request_patterns = [
+            (f"/markets/{ticker}/orderbook", None),
+            ("/markets/orderbook", {"ticker": ticker}),
+        ]
+        for path, params in request_patterns:
+            payload = self._public_get(path, params=params, timeout=10)
+            if not payload:
+                continue
+
+            # Expected shape can vary; normalize both dict/list levels.
+            book = payload.get("orderbook", payload)
+            yes_raw = book.get("yes", book.get("yes_bids", [])) if isinstance(book, dict) else []
+            no_raw = book.get("no", book.get("no_bids", [])) if isinstance(book, dict) else []
+
+            yes_bids: List[Dict[str, float]] = []
+            no_bids: List[Dict[str, float]] = []
+
+            for level in yes_raw or []:
+                if isinstance(level, dict):
+                    price = level.get("price")
+                    qty = level.get("quantity", level.get("count", 0))
+                elif isinstance(level, (list, tuple)) and len(level) >= 2:
+                    price, qty = level[0], level[1]
+                else:
+                    continue
+                try:
+                    price_val = float(price)
+                    qty_val = float(qty)
+                except (TypeError, ValueError):
+                    continue
+                yes_bids.append({"price": price_val, "quantity": qty_val})
+
+            for level in no_raw or []:
+                if isinstance(level, dict):
+                    price = level.get("price")
+                    qty = level.get("quantity", level.get("count", 0))
+                elif isinstance(level, (list, tuple)) and len(level) >= 2:
+                    price, qty = level[0], level[1]
+                else:
+                    continue
+                try:
+                    price_val = float(price)
+                    qty_val = float(qty)
+                except (TypeError, ValueError):
+                    continue
+                no_bids.append({"price": price_val, "quantity": qty_val})
+
+            return {"yes_bids": yes_bids, "no_bids": no_bids}
+        return None
+
+    def get_market_trades(self, ticker: str, limit: int = 200) -> List[Dict[str, Any]]:
+        """
+        Get recent public trades for a market.
+        """
+        payload = self._public_get("/markets/trades", params={"ticker": ticker, "limit": limit}, timeout=10)
+        if not payload:
+            return []
+        trades = payload.get("trades", [])
+        if not isinstance(trades, list):
+            return []
+        normalized: List[Dict[str, Any]] = []
+        for trade in trades:
+            if not isinstance(trade, dict):
+                continue
+            normalized.append(
+                {
+                    "ticker": trade.get("ticker", ticker),
+                    "yes_price": trade.get("yes_price"),
+                    "no_price": trade.get("no_price"),
+                    "price": trade.get("price"),
+                    "count": trade.get("count", trade.get("quantity", 0)),
+                    "side": trade.get("side", trade.get("taker_side")),
+                    "created_time": trade.get("created_time", trade.get("created_at")),
+                }
+            )
+        return normalized
     
     def place_order(self, ticker: str, side: str, quantity: int, price: int, order_type: str = "limit") -> Optional[str]:
         """

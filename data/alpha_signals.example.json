@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-02-04T00:00:00Z",
+  "signals": {
+    "KXEXAMPLE-01": {
+      "fair_yes_probability": 0.64,
+      "confidence": 0.78,
+      "source": "openclaw-model-v1",
+      "model_version": "openclaw-model-v1",
+      "horizon_minutes": 60,
+      "expected_edge_net": 0.022,
+      "generated_at": "2026-02-04T00:00:00Z"
+    },
+    "KXEXAMPLE-02": {
+      "fair_yes_probability": 0.38,
+      "confidence": 0.72,
+      "source": "openclaw-model-v1"
+    }
+  }
+}

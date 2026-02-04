@@ -1,55 +1,60 @@
 """
-Track Kalshi leaderboard and alert on consensus picks
-Run this daily to follow smart money
+Legacy command name retained.
+
+Tracks public market-flow consensus (not named-trader leaderboards).
 """
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from __future__ import annotations
 
-from core.leaderboard_tracker import KalshiLeaderboardTracker
 import argparse
+from argparse import Namespace
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from ops.build_flow_alpha import build_signals, write_outputs
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Track Kalshi leaderboard smart money")
-    parser.add_argument("--top", type=int, default=10, help="Number of top traders to track")
-    parser.add_argument("--min-consensus", type=int, default=3, help="Min traders for consensus")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Track public market-flow consensus")
+    parser.add_argument("--top", type=int, default=10, help="Number of signals to output")
+    parser.add_argument("--min-confidence", type=float, default=0.6)
     args = parser.parse_args()
-    
-    tracker = KalshiLeaderboardTracker()
-    
-    print(f"📊 Tracking top {args.top} Kalshi traders...")
-    print(f"🎯 Consensus threshold: {args.min_consensus}+ traders\n")
-    
-    # Get consensus picks
-    consensus = tracker.get_consensus_picks(min_traders=args.min_consensus)
-    
-    if not consensus:
-        print("No consensus picks found.")
-        print("Smart money is divided - wait for clearer signals.\n")
+
+    flow_args = Namespace(
+        env="prod",
+        markets_limit=200,
+        trade_limit=120,
+        book_depth=5,
+        top_k=args.top,
+        min_market_volume=2500.0,
+        min_trades=15,
+        max_spread=0.08,
+        min_confidence=args.min_confidence,
+        source_tag="smart_money_flow_v1",
+        alpha_out="data/alpha_signals.json",
+        csv_out="data/flow_signals_latest.csv",
+    )
+    signals = build_signals(flow_args)
+    if not signals:
+        print("No consensus flow signals found.")
         return
-    
-    print(f"🚨 {len(consensus)} SMART MONEY CONSENSUS PICKS:\n")
-    print("="*70)
-    
-    for i, pick in enumerate(consensus, 1):
-        print(f"\n{i}. Market: {pick['ticker']}")
-        print(f"   Side: {pick['side'].upper()}")
-        print(f"   Sharp traders: {pick['trader_count']}")
-        print(f"   Avg entry price: {pick['avg_entry_price']*100:.1f}¢")
-        print(f"   Traders: {', '.join(pick['traders'])}")
-        
-        # Calculate recommended position size
-        bankroll = 1000  # Adjust to your bankroll
-        position_size = bankroll * 0.10  # 10% per position
-        contracts = int(position_size / pick['avg_entry_price'])
-        
-        print(f"\n   💰 Recommended: Buy {contracts} contracts at ≤{pick['avg_entry_price']*100:.0f}¢")
-        print(f"   Risk: ${position_size:.0f} | Max profit: ${contracts * (1 - pick['avg_entry_price']):.0f}")
-    
-    print("\n" + "="*70)
-    print("\n✅ Action: Copy these positions on Kalshi")
-    print("⏰ Check back tomorrow for new consensus picks\n")
+
+    write_outputs(
+        signals,
+        alpha_out=Path(flow_args.alpha_out),
+        csv_out=Path(flow_args.csv_out),
+        source_tag=flow_args.source_tag,
+    )
+
+    print(f"Generated {len(signals)} market-flow signals:")
+    for i, signal in enumerate(signals, 1):
+        side = "YES" if float(signal["fair_yes_probability"]) >= 0.5 else "NO"
+        print(
+            f"{i}. {signal['ticker']} | side={side} | "
+            f"conf={float(signal['confidence']) * 100:.0f}% | "
+            f"edge={float(signal['edge_magnitude']) * 100:.2f}%"
+        )
 
 
 if __name__ == "__main__":

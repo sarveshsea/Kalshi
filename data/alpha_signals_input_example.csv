@@ -1,0 +1,3 @@
+ticker,fair_yes_probability,confidence,source,model_version,horizon_minutes,expected_edge_net
+KXEXAMPLE-01,0.64,0.78,openclaw-model-v1,openclaw-model-v1,60,0.022
+KXEXAMPLE-02,0.38,0.72,openclaw-model-v1,openclaw-model-v1,60,0.018
